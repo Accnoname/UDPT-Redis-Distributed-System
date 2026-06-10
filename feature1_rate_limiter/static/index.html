@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Rate Limiter - Redis Proof-of-Concept</title>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(22, 28, 45, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.15);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.15);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.15);
+            --accent: #a855f7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            padding: 2rem 5%;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(11, 15, 25, 0.5);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.2rem;
+        }
+
+        .header-title p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .badge-redis {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 0.4rem 0.8rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .container {
+            flex: 1;
+            padding: 2rem 5%;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1.2rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .server-selector {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .btn-select {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 0.6rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .btn-select.active {
+            background: var(--primary-glow);
+            border-color: var(--primary);
+            color: #a5b4fc;
+        }
+
+        .btn-select:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-trigger {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border: none;
+            border-radius: 10px;
+            padding: 1rem;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .btn-trigger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-trigger:active {
+            transform: translateY(0);
+        }
+
+        .btn-reset {
+            width: 100%;
+            background: transparent;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 10px;
+            padding: 0.75rem;
+            color: #f87171;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .btn-reset:hover {
+            background: rgba(239, 68, 68, 0.08);
+            border-color: #ef4444;
+        }
+
+        /* Right Column Gauge & Stats */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 0;
+            position: relative;
+        }
+
+        .progress-circle {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(closest-side, #111827 80%, transparent 0% 100%),
+                        conic-gradient(var(--primary) 0%, #1f2937 0%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .progress-circle::before {
+            content: "";
+            position: absolute;
+            width: 190px;
+            height: 190px;
+            border-radius: 50%;
+            border: 1px solid var(--card-border);
+            z-index: -1;
+        }
+
+        .gauge-value {
+            text-align: center;
+            z-index: 10;
+        }
+
+        .gauge-num {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .gauge-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-indicator {
+            margin-top: 1rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 0.4rem 1.2rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .status-ok {
+            background: var(--success-glow);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-blocked {
+            background: var(--danger-glow);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            animation: shake 0.3s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        /* Stream visualization */
+        .visual-stream {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-top: 1rem;
+            max-height: 100px;
+            overflow-y: auto;
+            padding: 0.2rem;
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            background: #1f2937;
+        }
+
+        .dot.allowed {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+        }
+
+        .dot.blocked {
+            background: var(--danger);
+            box-shadow: 0 0 6px var(--danger);
+        }
+
+        /* Real-time Logs */
+        .log-list {
+            list-style: none;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            background: rgba(10, 15, 30, 0.5);
+        }
+
+        .log-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+
+        .log-server {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .log-status {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .log-status.allowed {
+            color: #34d399;
+        }
+
+        .log-status.blocked {
+            color: #f87171;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">
+            <h1>🛡️ Distributed Rate Limiter</h1>
+            <p>Proof of Concept: Shared-State Rate Limiting via Redis Distributed Cluster</p>
+        </div>
+        <div class="badge-redis">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Redis Master Sync Active
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Cấu hình và Bảng điều khiển -->
+        <div class="col-left">
+            <div class="card">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Cấu hình Rate Limiter
+                </div>
+                <div class="form-group">
+                    <label for="clientId">Client ID (Mã định danh Client)</label>
+                    <input type="text" id="clientId" value="user_mobile_app_1">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="maxRequests">Giới hạn số request (Max Limit)</label>
+                        <input type="number" id="maxRequests" value="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="windowSize">Khung thời gian (Window - giây)</label>
+                        <input type="number" id="windowSize" value="10" min="1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                    Điều hướng Server (Load Balancer Sim)
+                </div>
+                <div class="server-selector">
+                    <div class="btn-select active" id="srv-lb" onclick="selectServer('lb')">🔀 Load Balancer</div>
+                    <div class="btn-select" id="srv-8001" onclick="selectServer(8001)">Server A (8001)</div>
+                    <div class="btn-select" id="srv-8002" onclick="selectServer(8002)">Server B (8002)</div>
+                    <div class="btn-select" id="srv-8003" onclick="selectServer(8003)">Server C (8003)</div>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                    * Cho dù request gửi tới bất kỳ Server nào (A, B hay C), trạng thái counter vẫn được đồng bộ ngay lập tức thông qua Redis Database chung!
+                </p>
+                
+                <button class="btn-trigger" id="btnTrigger" onclick="sendRequest()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
+                    Gửi Request
+                </button>
+                <button class="btn-reset" onclick="resetCounter()">Đặt lại Counter (Reset)</button>
+            </div>
+        </div>
+
+        <!-- Màn hình giám sát thời gian thực -->
+        <div class="col-right">
+            <div class="card">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    Giám Sát Thời Gian Thực (Real-time Status)
+                </div>
+                
+                <div class="gauge-container">
+                    <div class="progress-circle" id="progressCircle">
+                        <div class="gauge-value">
+                            <div class="gauge-num" id="gaugeVal">0 / 10</div>
+                            <div class="gauge-label">Requests sử dụng</div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-indicator status-ok" id="statusIndicator">
+                        <span>🟢 Sẵn Sàng (Allowed)</span>
+                    </div>
+                </div>
+
+                <label>Lịch sử trực quan (30 request gần nhất)</label>
+                <div class="visual-stream" id="visualStream">
+                    <!-- Dấu chấm lịch sử -->
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 0;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Nhật Ký Request Hệ Thống (Distributed Logs)
+                </div>
+                <ul class="log-list" id="logList">
+                    <li class="log-item" style="justify-content: center; color: var(--text-muted);">Chưa có request nào được gửi</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedServerMode = 'lb'; // 'lb' (Load Balancer) hoặc port cụ thể (8001, 8002, 8003)
+        let roundRobinIndex = 0;
+        const availablePorts = [8001, 8002, 8003];
+        const logList = document.getElementById('logList');
+        const visualStream = document.getElementById('visualStream');
+        const progressCircle = document.getElementById('progressCircle');
+        const gaugeVal = document.getElementById('gaugeVal');
+        const statusIndicator = document.getElementById('statusIndicator');
+
+        // Tạo 30 ô dot trống cho visual stream
+        for(let i=0; i<30; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'dot';
+            visualStream.appendChild(dot);
+        }
+
+        function selectServer(mode) {
+            selectedServerMode = mode;
+            // Cập nhật giao diện button active
+            document.querySelectorAll('.btn-select').forEach(btn => btn.classList.remove('active'));
+            if(mode === 'lb') {
+                document.getElementById('srv-lb').classList.add('active');
+            } else {
+                document.getElementById(`srv-${mode}`).classList.add('active');
+            }
+        }
+
+        function getTargetPort() {
+            if (selectedServerMode === 'lb') {
+                const port = availablePorts[roundRobinIndex % availablePorts.length];
+                roundRobinIndex++;
+                return port;
+            }
+            return selectedServerMode;
+        }
+
+        async function sendRequest() {
+            const clientId = document.getElementById('clientId').value.trim();
+            const limit = document.getElementById('maxRequests').value;
+            const windowSize = document.getElementById('windowSize').value;
+            const port = getTargetPort();
+
+            if(!clientId) {
+                alert('Vui lòng điền Client ID');
+                return;
+            }
+
+            const url = `http://localhost:${port}/api/request?client_id=${encodeURIComponent(clientId)}&limit=${limit}&window=${windowSize}`;
+            const btn = document.getElementById('btnTrigger');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Cập nhật UI
+                updateUI(data.allowed, data.current_count, data.limit, data.server_port);
+            } catch(e) {
+                console.error(e);
+                addLogEntry(port, 'Lỗi kết nối Server', false, true);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function resetCounter() {
+            const clientId = document.getElementById('clientId').value.trim();
+            const port = getTargetPort();
+            if(!clientId) return;
+
+            const url = `http://localhost:${port}/api/reset?client_id=${encodeURIComponent(clientId)}`;
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json();
+                
+                // Clear UI
+                gaugeVal.innerText = `0 / ${document.getElementById('maxRequests').value}`;
+                progressCircle.style.background = `radial-gradient(closest-side, #111827 80%, transparent 0% 100%), conic-gradient(var(--primary) 0%, #1f2937 0%)`;
+                statusIndicator.className = 'status-indicator status-ok';
+                statusIndicator.innerHTML = '<span>🟢 Sẵn Sàng (Allowed)</span>';
+                
+                // Clear log list
+                logList.innerHTML = '<li class="log-item" style="justify-content: center; color: var(--text-muted);">Đã xóa bộ đếm của Client</li>';
+                
+                // Clear dots
+                document.querySelectorAll('.dot').forEach(dot => {
+                    dot.className = 'dot';
+                });
+            } catch(e) {
+                console.error(e);
+                alert('Không thể reset bộ đếm.');
+            }
+        }
+
+        function updateUI(allowed, currentCount, limit, port) {
+            // Cập nhật Gauge
+            gaugeVal.innerText = `${currentCount} / ${limit}`;
+            
+            const percent = Math.min((currentCount / limit) * 100, 100);
+            const color = allowed ? 'var(--primary)' : 'var(--danger)';
+            progressCircle.style.background = `radial-gradient(closest-side, #111827 80%, transparent 0% 100%), conic-gradient(${color} ${percent}%, #1f2937 0%)`;
+
+            // Cập nhật Status indicator
+            if(allowed) {
+                statusIndicator.className = 'status-indicator status-ok';
+                statusIndicator.innerHTML = '<span>🟢 Yêu Cầu Được Chấp Nhận (200 OK)</span>';
+            } else {
+                statusIndicator.className = 'status-indicator status-blocked';
+                statusIndicator.innerHTML = '<span>❌ Bị Giới Hạn Tốc Độ (429 Rate Limited)</span>';
+            }
+
+            // Cập nhật dots
+            const dots = document.querySelectorAll('.dot');
+            // Dịch chuyển dots (shift left)
+            for(let i = 0; i < dots.length - 1; i++) {
+                dots[i].className = dots[i+1].className;
+            }
+            // Add dot mới ở cuối
+            dots[dots.length - 1].className = `dot ${allowed ? 'allowed' : 'blocked'}`;
+
+            // Add Log Entry
+            addLogEntry(port, allowed ? '200 OK' : '429 Rate Limited', allowed, false);
+        }
+
+        function addLogEntry(port, statusText, allowed, isError) {
+            if (logList.innerHTML.includes('Chưa có request nào') || logList.innerHTML.includes('Đã xóa bộ đếm')) {
+                logList.innerHTML = '';
+            }
+
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+            const li = document.createElement('li');
+            li.className = 'log-item';
+
+            const serverLabel = `Port ${port}`;
+            const statusClass = isError ? 'blocked' : (allowed ? 'allowed' : 'blocked');
+            const statusIcon = isError ? '⚠️' : (allowed ? '✅' : '❌');
+
+            li.innerHTML = `
+                <span class="log-time">${timeStr}</span>
+                <span class="log-server">${serverLabel}</span>
+                <span class="log-status ${statusClass}">${statusIcon} ${statusText}</span>
+            `;
+
+            logList.insertBefore(li, logList.firstChild);
+
+            // Giới hạn 50 logs hiển thị
+            if(logList.children.length > 50) {
+                logList.removeChild(logList.lastChild);
+            }
+        }
+    </script>
+</body>
+</html>
