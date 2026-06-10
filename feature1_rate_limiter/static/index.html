@@ -509,12 +509,16 @@
         const gaugeVal = document.getElementById('gaugeVal');
         const statusIndicator = document.getElementById('statusIndicator');
 
-        // Tạo 30 ô dot trống cho visual stream
-        for(let i=0; i<30; i++) {
-            const dot = document.createElement('div');
-            dot.className = 'dot';
-            visualStream.appendChild(dot);
+        // Khởi tạo các ô dots lịch sử
+        function initDots() {
+            visualStream.innerHTML = "";
+            for(let i=0; i<30; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                visualStream.appendChild(dot);
+            }
         }
+        initDots();
 
         function selectServer(mode) {
             selectedServerMode = mode;
@@ -536,6 +540,94 @@
             return selectedServerMode;
         }
 
+        async function fetchStatsAndLogs() {
+            const clientId = document.getElementById('clientId').value.trim();
+            const limit = document.getElementById('maxRequests').value;
+            const windowSize = document.getElementById('windowSize').value;
+            // Sử dụng port hiện tại (hoặc port đầu tiên nếu dùng Load Balancer) để lấy dữ liệu chung từ Redis
+            const port = selectedServerMode === 'lb' ? 8001 : selectedServerMode;
+
+            if(!clientId) return;
+
+            try {
+                // 1. Lấy số count hiện tại từ Redis
+                const statusUrl = `http://localhost:${port}/api/status?client_id=${encodeURIComponent(clientId)}&limit=${limit}&window=${windowSize}`;
+                const resStatus = await fetch(statusUrl);
+                const statusData = await resStatus.json();
+                
+                const currentCount = statusData.current_count;
+                gaugeVal.innerText = `${currentCount} / ${limit}`;
+                
+                const percent = Math.min((currentCount / limit) * 100, 100);
+
+                // 2. Lấy logs lịch sử dùng chung từ Redis
+                const logsUrl = `http://localhost:${port}/api/logs`;
+                const resLogs = await fetch(logsUrl);
+                const logsData = await resLogs.json();
+                
+                let allowed = currentCount < limit;
+                if (logsData.length > 0) {
+                    allowed = logsData[0].allowed; // Dựa vào request cuối cùng để tô màu UI
+                }
+                
+                const color = allowed ? 'var(--primary)' : 'var(--danger)';
+                progressCircle.style.background = `radial-gradient(closest-side, #111827 80%, transparent 0% 100%), conic-gradient(${color} ${percent}%, #1f2937 0%)`;
+
+                // Cập nhật chỉ số trạng thái
+                if(currentCount >= limit) {
+                    statusIndicator.className = 'status-indicator status-blocked';
+                    statusIndicator.innerHTML = '<span>❌ Bị Giới Hạn Tốc Độ (429 Rate Limited)</span>';
+                } else {
+                    statusIndicator.className = 'status-indicator status-ok';
+                    statusIndicator.innerHTML = '<span>🟢 Yêu Cầu Được Chấp Nhận (200 OK)</span>';
+                }
+
+                // Vẽ danh sách logs
+                if(logsData.length === 0) {
+                    logList.innerHTML = '<li class="log-item" style="justify-content: center; color: var(--text-muted);">Chưa có request nào được gửi</li>';
+                } else {
+                    logList.innerHTML = "";
+                    logsData.forEach(log => {
+                        const date = new Date(log.timestamp * 1000);
+                        const timeStr = date.toTimeString().split(' ')[0] + '.' + String(date.getMilliseconds()).padStart(3, '0');
+                        const li = document.createElement('li');
+                        li.className = 'log-item';
+                        const statusClass = log.allowed ? 'allowed' : 'blocked';
+                        const statusIcon = log.allowed ? '✅' : '❌';
+                        const statusText = log.allowed ? (log.allowed === true ? '200 OK' : '429 Rate Limited') : '429 Rate Limited';
+
+                        li.innerHTML = `
+                            <span class="log-time">${timeStr}</span>
+                            <span class="log-server">Port ${log.port}</span>
+                            <span class="log-status ${statusClass}">${statusIcon} ${log.allowed ? '200 OK' : '429 Rate Limited'}</span>
+                        `;
+                        logList.appendChild(li);
+                    });
+                }
+
+                // Vẽ lại 30 ô dots lịch sử
+                const last30 = logsData.slice(0, 30).reverse();
+                const dots = document.querySelectorAll('.dot');
+                
+                // Reset dots
+                dots.forEach(dot => {
+                    dot.className = 'dot';
+                });
+                
+                // Điền các chấm từ phải sang trái (mới nhất nằm bên phải)
+                const startIndex = 30 - last30.length;
+                last30.forEach((log, index) => {
+                    const dotIndex = startIndex + index;
+                    if(dots[dotIndex]) {
+                        dots[dotIndex].className = `dot ${log.allowed ? 'allowed' : 'blocked'}`;
+                    }
+                });
+
+            } catch(e) {
+                console.error("Lỗi cập nhật Dashboard:", e);
+            }
+        }
+
         async function sendRequest() {
             const clientId = document.getElementById('clientId').value.trim();
             const limit = document.getElementById('maxRequests').value;
@@ -552,14 +644,19 @@
             btn.disabled = true;
 
             try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                // Cập nhật UI
-                updateUI(data.allowed, data.current_count, data.limit, data.server_port);
+                await fetch(url);
+                // Đồng bộ lại UI lập tức sau khi gửi
+                await fetchStatsAndLogs();
             } catch(e) {
                 console.error(e);
-                addLogEntry(port, 'Lỗi kết nối Server', false, true);
+                const li = document.createElement('li');
+                li.className = 'log-item';
+                li.innerHTML = `
+                    <span class="log-time">${new Date().toLocaleTimeString()}</span>
+                    <span class="log-server">Port ${port}</span>
+                    <span class="log-status blocked">⚠️ Lỗi kết nối</span>
+                `;
+                logList.insertBefore(li, logList.firstChild);
             } finally {
                 btn.disabled = false;
             }
@@ -572,86 +669,18 @@
 
             const url = `http://localhost:${port}/api/reset?client_id=${encodeURIComponent(clientId)}`;
             try {
-                const response = await fetch(url, { method: 'POST' });
-                const data = await response.json();
-                
-                // Clear UI
-                gaugeVal.innerText = `0 / ${document.getElementById('maxRequests').value}`;
-                progressCircle.style.background = `radial-gradient(closest-side, #111827 80%, transparent 0% 100%), conic-gradient(var(--primary) 0%, #1f2937 0%)`;
-                statusIndicator.className = 'status-indicator status-ok';
-                statusIndicator.innerHTML = '<span>🟢 Sẵn Sàng (Allowed)</span>';
-                
-                // Clear log list
-                logList.innerHTML = '<li class="log-item" style="justify-content: center; color: var(--text-muted);">Đã xóa bộ đếm của Client</li>';
-                
-                // Clear dots
-                document.querySelectorAll('.dot').forEach(dot => {
-                    dot.className = 'dot';
-                });
+                await fetch(url, { method: 'POST' });
+                initDots();
+                await fetchStatsAndLogs();
             } catch(e) {
                 console.error(e);
                 alert('Không thể reset bộ đếm.');
             }
         }
 
-        function updateUI(allowed, currentCount, limit, port) {
-            // Cập nhật Gauge
-            gaugeVal.innerText = `${currentCount} / ${limit}`;
-            
-            const percent = Math.min((currentCount / limit) * 100, 100);
-            const color = allowed ? 'var(--primary)' : 'var(--danger)';
-            progressCircle.style.background = `radial-gradient(closest-side, #111827 80%, transparent 0% 100%), conic-gradient(${color} ${percent}%, #1f2937 0%)`;
-
-            // Cập nhật Status indicator
-            if(allowed) {
-                statusIndicator.className = 'status-indicator status-ok';
-                statusIndicator.innerHTML = '<span>🟢 Yêu Cầu Được Chấp Nhận (200 OK)</span>';
-            } else {
-                statusIndicator.className = 'status-indicator status-blocked';
-                statusIndicator.innerHTML = '<span>❌ Bị Giới Hạn Tốc Độ (429 Rate Limited)</span>';
-            }
-
-            // Cập nhật dots
-            const dots = document.querySelectorAll('.dot');
-            // Dịch chuyển dots (shift left)
-            for(let i = 0; i < dots.length - 1; i++) {
-                dots[i].className = dots[i+1].className;
-            }
-            // Add dot mới ở cuối
-            dots[dots.length - 1].className = `dot ${allowed ? 'allowed' : 'blocked'}`;
-
-            // Add Log Entry
-            addLogEntry(port, allowed ? '200 OK' : '429 Rate Limited', allowed, false);
-        }
-
-        function addLogEntry(port, statusText, allowed, isError) {
-            if (logList.innerHTML.includes('Chưa có request nào') || logList.innerHTML.includes('Đã xóa bộ đếm')) {
-                logList.innerHTML = '';
-            }
-
-            const now = new Date();
-            const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
-
-            const li = document.createElement('li');
-            li.className = 'log-item';
-
-            const serverLabel = `Port ${port}`;
-            const statusClass = isError ? 'blocked' : (allowed ? 'allowed' : 'blocked');
-            const statusIcon = isError ? '⚠️' : (allowed ? '✅' : '❌');
-
-            li.innerHTML = `
-                <span class="log-time">${timeStr}</span>
-                <span class="log-server">${serverLabel}</span>
-                <span class="log-status ${statusClass}">${statusIcon} ${statusText}</span>
-            `;
-
-            logList.insertBefore(li, logList.firstChild);
-
-            // Giới hạn 50 logs hiển thị
-            if(logList.children.length > 50) {
-                logList.removeChild(logList.lastChild);
-            }
-        }
+        // Đặt polling tự động mỗi 1 giây
+        setInterval(fetchStatsAndLogs, 1000);
+        fetchStatsAndLogs(); // Chạy ngay lập tức lần đầu
     </script>
 </body>
 </html>
