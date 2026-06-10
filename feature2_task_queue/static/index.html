@@ -8,19 +8,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #080c14;
-            --card-bg: rgba(17, 24, 39, 0.7);
-            --card-border: rgba(255, 255, 255, 0.08);
-            --text-main: #f9fafb;
-            --text-muted: #9ca3af;
-            --primary: #5856d6;
-            --primary-glow: rgba(88, 86, 214, 0.15);
+            --bg-color: #f1f5f9;
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --primary: #4f46e5;
+            --primary-glow: rgba(79, 70, 229, 0.08);
             --success: #10b981;
-            --success-glow: rgba(16, 185, 129, 0.1);
+            --success-glow: rgba(16, 185, 129, 0.08);
             --danger: #ef4444;
-            --danger-glow: rgba(239, 68, 68, 0.1);
+            --danger-glow: rgba(239, 68, 68, 0.08);
             --warning: #f59e0b;
-            --warning-glow: rgba(245, 158, 11, 0.1);
+            --warning-glow: rgba(245, 158, 11, 0.08);
             --info: #3b82f6;
         }
 
@@ -40,14 +40,14 @@
             flex-direction: column;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 80% 10%, rgba(88, 86, 214, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 80% 10%, rgba(79, 70, 229, 0.04) 0%, transparent 40%),
                 radial-gradient(circle at 10% 80%, rgba(16, 185, 129, 0.04) 0%, transparent 40%);
         }
 
         header {
             padding: 1.5rem 5%;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(8, 12, 20, 0.5);
+            background: rgba(255, 255, 255, 0.6);
             backdrop-filter: blur(12px);
             display: flex;
             justify-content: space-between;
@@ -57,7 +57,7 @@
         .header-title h1 {
             font-size: 1.6rem;
             font-weight: 700;
-            background: linear-gradient(135deg, #a5b4fc, #818cf8);
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 0.25rem;
@@ -109,7 +109,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
             backdrop-filter: blur(10px);
         }
 
@@ -137,7 +137,7 @@
         }
 
         .kpi-icon-queue { background: var(--warning-glow); color: var(--warning); }
-        .kpi-icon-active { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+        .kpi-icon-active { background: rgba(59, 130, 246, 0.08); color: var(--info); }
         .kpi-icon-success { background: var(--success-glow); color: var(--success); }
         .kpi-icon-dlq { background: var(--danger-glow); color: var(--danger); }
 
@@ -171,7 +171,7 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             padding-bottom: 0.75rem;
         }
 
@@ -190,8 +190,8 @@
 
         select {
             width: 100%;
-            background: rgba(10, 15, 30, 0.8);
-            border: 1px solid var(--card-border);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
             padding: 0.75rem;
             color: var(--text-main);
@@ -246,8 +246,8 @@
         }
 
         .worker-card {
-            background: rgba(10, 15, 26, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.04);
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             border-radius: 10px;
             padding: 1rem;
             display: flex;
@@ -265,12 +265,12 @@
             width: 38px;
             height: 38px;
             border-radius: 50%;
-            background: #1f2937;
+            background: #e0e7ff;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            color: #818cf8;
+            color: #4f46e5;
             border: 1px solid rgba(129, 140, 248, 0.2);
         }
 
@@ -288,8 +288,8 @@
             display: inline-block;
         }
 
-        .status-idle { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
-        .status-processing { background: rgba(59, 130, 246, 0.2); color: #60a5fa; animation: pulse 1.5s infinite; }
+        .status-idle { background: #f1f5f9; color: #64748b; }
+        .status-processing { background: #e0f2fe; color: #0369a1; animation: pulse 1.5s infinite; }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -312,19 +312,20 @@
             list-style: none;
             max-height: 300px;
             overflow-y: auto;
-            border: 1px solid var(--card-border);
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
-            background: rgba(10, 15, 25, 0.4);
+            background: rgba(255, 255, 255, 0.8);
         }
 
         .dlq-item {
             padding: 0.8rem 1.2rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid #e2e8f0;
             font-size: 0.8rem;
             display: grid;
             grid-template-columns: 1.2fr 1fr 1.5fr 1fr;
             align-items: center;
             gap: 1rem;
+            color: #334155;
         }
 
         .dlq-item:last-child {
@@ -332,15 +333,15 @@
         }
 
         .dlq-header {
-            background: rgba(255, 255, 255, 0.02);
+            background: #f1f5f9;
             font-weight: 600;
             color: var(--text-muted);
-            border-bottom: 1px solid var(--card-border);
+            border-bottom: 1px solid #cbd5e1;
         }
 
-        .dlq-id { font-family: monospace; color: #f87171; font-weight: 600; }
-        .dlq-type { background: rgba(255, 255, 255, 0.05); padding: 0.1rem 0.3rem; border-radius: 4px; font-size: 0.75rem; text-align: center; }
-        .dlq-error { color: #fca5a5; }
+        .dlq-id { font-family: monospace; color: #dc2626; font-weight: 600; }
+        .dlq-type { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px; font-size: 0.75rem; text-align: center; }
+        .dlq-error { color: #b91c1c; }
         .dlq-time { color: var(--text-muted); font-size: 0.75rem; }
 
         ::-webkit-scrollbar {
@@ -350,9 +351,10 @@
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.1);
             border-radius: 3px;
         }
+    </style>
     </style>
 </head>
 <body>
