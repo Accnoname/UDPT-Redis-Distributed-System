@@ -1,0 +1,53 @@
+version: '3.8'
+
+# Redis Replication: 1 Master + 2 Replicas
+# Dùng để thực nghiệm tính năng phân tán
+
+services:
+  redis-master:
+    image: redis:7.2
+    container_name: redis-master
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --loglevel notice
+      --bind 0.0.0.0
+    volumes:
+      - master_data:/data
+
+  redis-replica-1:
+    image: redis:7.2
+    container_name: redis-replica-1
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --replica-read-only yes
+      --appendonly yes
+    depends_on:
+      - redis-master
+    volumes:
+      - replica1_data:/data
+
+  redis-replica-2:
+    image: redis:7.2
+    container_name: redis-replica-2
+    ports:
+      - "6381:6379"
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --replica-read-only yes
+      --appendonly yes
+    depends_on:
+      - redis-master
+    volumes:
+      - replica2_data:/data
+
+volumes:
+  master_data:
+  replica1_data:
+  replica2_data:
